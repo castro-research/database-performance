@@ -5,24 +5,24 @@ import java.sql.*;
 class PerformThread {
     public void run(PerformTable table) {
         try (Connection connection = new Database().connection();
-             Statement statement = connection.createStatement()) {
+                Statement statement = connection.createStatement()) {
 
-            String dropTableSQL = "DROP TABLE IF EXISTS " + table.name;
+            String dropTableSQL = "DROP TABLE IF EXISTS " + table.getTableName();
             statement.execute(dropTableSQL);
 
             // Create table
-            statement.execute(table.createTable);
+            statement.execute(table.getCreateTableSql());
 
             // Insert data
-            statement.execute(table.insertQuery);
+            statement.execute(table.getInsertSql());
 
             // Query table size
             String getSizeTableSQL = "SELECT pg_size_pretty(pg_relation_size(?))";
             try (PreparedStatement sizeStatement = connection.prepareStatement(getSizeTableSQL)) {
-                sizeStatement.setString(1, table.name);
+                sizeStatement.setString(1, table.getTableName());
                 try (ResultSet sizeQuery = sizeStatement.executeQuery()) {
                     if (sizeQuery.next()) {
-                        System.out.println("Table name " + table.name + " size: " + sizeQuery.getString(1));
+                        System.out.println("Table name " + table.getTableName() + " size: " + sizeQuery.getString(1));
                     }
                 }
             }
@@ -34,49 +34,72 @@ class PerformThread {
 }
 
 abstract class PerformTable implements Runnable {
-    String name;
-    String createTable;
-    String insertQuery;
-    public void run() {}
+    protected String name;
+
+    abstract String getCreateTableSql();
+
+    abstract String getInsertSql();
+
+    public void run() {
+        new PerformThread().run(this);
+    }
+
+    public String getTableName() {
+        return name;
+    }
 }
+
 class OrderedColumns extends PerformTable {
     OrderedColumns() {
         this.name = "test_b";
-        this.createTable = """
-                CREATE TABLE test_b (
-                t1 INT,
-                t2 INT,
-                t3 INT,
-                t4 VARCHAR(100),
-                t5 VARCHAR(100),
-                t6 VARCHAR(100)
-                )
-        """;
-        this.insertQuery = "INSERT INTO " + this.name + " SELECT 10, 20, 30, 'abcd', 'abcd', 'abcd' FROM generate_series(1, 10000000)";
     }
 
-    public void run() {
-        new PerformThread().run(this);
+    @Override
+    public String getCreateTableSql() {
+        return """
+                CREATE TABLE\s""" + this.name + """
+                       (
+                        t1 INT,
+                        t2 INT,
+                        t3 INT,
+                        t4 VARCHAR(100),
+                        t5 VARCHAR(100),
+                        t6 VARCHAR(100)
+                        )
+                """;
+    }
+
+    @Override
+    public String getInsertSql() {
+        return "INSERT INTO " + this.name
+                + " SELECT 10, 20, 30, 'abcd', 'abcd', 'abcd' FROM generate_series(1, 10000000)";
     }
 }
+
 class UnorderedColumns extends PerformTable {
     UnorderedColumns() {
         this.name = "test_a";
-        this.createTable = """
-                CREATE TABLE test_a (
-                t1 VARCHAR(100),
-                t2 INT,
-                t3 VARCHAR(100),
-                t4 INT,
-                t5 VARCHAR(100),
-                t6 INT
-                )
-        """;
-        this.insertQuery = "INSERT INTO " + this.name + " SELECT 'abcd', 10, 'abcd', 20, 'abcd', 30 FROM generate_series(1, 10000000)";
     }
 
-    public void run() {
-        new PerformThread().run(this);
+    @Override
+    public String getCreateTableSql() {
+        return """
+                CREATE TABLE\s""" + this.name + """
+                       (
+                        t1 VARCHAR(100),
+                        t2 INT,
+                        t3 VARCHAR(100),
+                        t4 INT,
+                        t5 VARCHAR(100),
+                        t6 INT
+                        )
+                """;
+    }
+
+    @Override
+    public String getInsertSql() {
+        return "INSERT INTO " + this.name
+                + " SELECT 'abcd', 10, 'abcd', 20, 'abcd', 30 FROM generate_series(1, 10000000)";
     }
 }
 
